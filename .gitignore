@@ -1,0 +1,31 @@
+# authelia
+authelia/*
+!authelia/configuration.yml
+!authelia/users_database.yml
+# duckdns
+duckdns/
+# emqx
+emqx/*
+!emqx/data/
+emqx/data/*
+# !emqx/data/configs/
+# frigate
+frigate/*
+!frigate/config.yml
+# mariadb
+mariadb/
+# swag
+swag/
+# swag/nginx/**
+# swag/nginx/proxy-confs/**
+.env
+glances/glances.conf
+ollama/
+open-webui/
+llama-models/models
+
+# ignore all files and directories of nextcloud excluding nextcloud/www/nextcloud/config/config.php
+nextcloud/*
+!nextcloud/www/nextcloud/config/config.php
+prometheus/prometheus.yml
+frigate/config.yml

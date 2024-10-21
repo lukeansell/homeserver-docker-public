@@ -1,0 +1,370 @@
+services:
+  phpmyadmin:
+    container_name: phpmyadmin
+    environment:
+      MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
+      PMA_HOST: 192.168.1.99
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 1G
+    image: phpmyadmin:latest
+    ports:
+      - 8880:80/tcp
+    restart: unless-stopped
+
+  mariadb:
+    container_name: mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
+      PGID: $PGID
+      PUID: $PUID
+      # - REMOTE_SQL=
+      TZ: $TZ
+    hostname: mariadb
+    security_opt: # see https://github.com/MariaDB/mariadb-docker/issues/434#issuecomment-1136151239
+      - seccomp:unconfined
+      - apparmor:unconfined
+    # command: --innodb-buffer-pool-size=512M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120 --query_cache_size=40M 
+    image: mariadb:11
+    ports:
+      - 3306:3306/tcp
+    restart: unless-stopped
+    volumes:
+      - $DOCKERDIR/mariadb/config:/etc/mysql/conf.d:ro
+      - $DOCKERDIR/mariadb/data/:/var/lib/mysql
+
+  photoprism:
+    container_name: photoprism
+    restart: unless-stopped
+    ## Use photoprism/photoprism:preview for testing preview builds:
+    image: photoprism/photoprism:latest
+    ## Don't enable automatic restarts until PhotoPrism has been properly configured and tested!
+    ## If the service gets stuck in a restart loop, this points to a memory, filesystem, network, or database issue:
+    ## https://docs.photoprism.app/getting-started/troubleshooting/#fatal-server-errors
+    # restart: unless-stopped
+    stop_grace_period: 10s
+    depends_on:
+      - mariadb
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    ## Server port mapping in the format "Host:Container". To use a different port, change the host port on
+    ## the left-hand side and keep the container port, e.g. "80:2342" (for HTTP) or "443:2342 (for HTTPS):
+    ports:
+      - "2342:2342"
+    ## Before you start the service, please check the following config options (and change them as needed):
+    ## https://docs.photoprism.app/getting-started/config-options/
+    environment:
+      PHOTOPRISM_ADMIN_USER: $PHOTOPRISM_ADMIN_USER                 # admin login username
+      PHOTOPRISM_ADMIN_PASSWORD: $PHOTOPRISM_ADMIN_PASSWORD          # initial admin password (8-72 characters)
+      PHOTOPRISM_AUTH_MODE: "password"               # authentication mode (public, password)
+      PHOTOPRISM_SITE_URL: "http://localhost:2342/"  # server URL in the format "http(s)://domain.name(:port)/(path)"
+      PHOTOPRISM_DISABLE_TLS: "false"                # disables HTTPS/TLS even if the site URL starts with https:// and a certificate is available
+      PHOTOPRISM_DEFAULT_TLS: "true"                 # defaults to a self-signed HTTPS/TLS certificate if no other certificate is available
+      PHOTOPRISM_ORIGINALS_LIMIT: 5000               # file size limit for originals in MB (increase for high-res video)
+      PHOTOPRISM_HTTP_COMPRESSION: "gzip"            # improves transfer speed and bandwidth utilization (none or gzip)
+      PHOTOPRISM_LOG_LEVEL: "info"                   # log level: trace, debug, info, warning, error, fatal, or panic
+      PHOTOPRISM_READONLY: "false"                   # do not modify originals directory (reduced functionality)
+      PHOTOPRISM_EXPERIMENTAL: "false"               # enables experimental features
+      PHOTOPRISM_DISABLE_CHOWN: "false"              # disables updating storage permissions via chmod and chown on startup
+      PHOTOPRISM_DISABLE_WEBDAV: "false"             # disables built-in WebDAV server
+      PHOTOPRISM_DISABLE_SETTINGS: "false"           # disables settings UI and API
+      PHOTOPRISM_DISABLE_TENSORFLOW: "false"         # disables all features depending on TensorFlow
+      PHOTOPRISM_DISABLE_FACES: "false"              # disables face detection and recognition (requires TensorFlow)
+      PHOTOPRISM_DISABLE_CLASSIFICATION: "false"     # disables image classification (requires TensorFlow)
+      PHOTOPRISM_DISABLE_VECTORS: "false"            # disables vector graphics support
+      PHOTOPRISM_DISABLE_RAW: "false"                # disables indexing and conversion of RAW images
+      PHOTOPRISM_RAW_PRESETS: "false"                # enables applying user presets when converting RAW images (reduces performance)
+      PHOTOPRISM_SIDECAR_YAML: "true"                # creates YAML sidecar files to back up picture metadata
+      PHOTOPRISM_BACKUP_ALBUMS: "true"               # creates YAML files to back up album metadata
+      PHOTOPRISM_BACKUP_DATABASE: "true"             # creates regular backups based on the configured schedule
+      PHOTOPRISM_BACKUP_SCHEDULE: "daily"            # backup SCHEDULE in cron format (e.g. "0 12 * * *" for daily at noon) or at a random time (daily, weekly)
+      PHOTOPRISM_INDEX_SCHEDULE: ""                  # indexing SCHEDULE in cron format (e.g. "@every 3h" for every 3 hours; "" to disable)
+      PHOTOPRISM_AUTO_INDEX: 300                     # delay before automatically indexing files in SECONDS when uploading via WebDAV (-1 to disable)
+      PHOTOPRISM_AUTO_IMPORT: -1                     # delay before automatically importing files in SECONDS when uploading via WebDAV (-1 to disable)
+      PHOTOPRISM_DETECT_NSFW: "false"                # automatically flags photos as private that MAY be offensive (requires TensorFlow)
+      PHOTOPRISM_UPLOAD_NSFW: "true"                 # allows uploads that MAY be offensive (no effect without TensorFlow)
+      # PHOTOPRISM_DATABASE_DRIVER: "sqlite"         # SQLite is an embedded database that does not require a separate database server
+      PHOTOPRISM_DATABASE_DRIVER: "mysql"            # MariaDB 10.5.12+ (MySQL successor) offers significantly better performance compared to SQLite
+      PHOTOPRISM_DATABASE_SERVER: "mariadb:3306"     # MariaDB database server (hostname:port)
+      PHOTOPRISM_DATABASE_NAME: "photoprism"         # MariaDB database schema name
+      PHOTOPRISM_DATABASE_USER: "photoprism"         # MariaDB database user name
+      PHOTOPRISM_DATABASE_PASSWORD: $PHOTOPRISM_DATABASE_PASSWORD     # MariaDB database user password
+      PHOTOPRISM_SITE_CAPTION: "AI-Powered Photos App"
+      PHOTOPRISM_SITE_DESCRIPTION: ""                # meta site description
+      PHOTOPRISM_SITE_AUTHOR: ""                     # meta site author
+      ## Video Transcoding (https://docs.photoprism.app/getting-started/advanced/transcoding/):
+      # PHOTOPRISM_FFMPEG_ENCODER: "software"        # H.264/AVC encoder (software, intel, nvidia, apple, raspberry, or vaapi)
+      # PHOTOPRISM_FFMPEG_SIZE: "1920"               # video size limit in pixels (720-7680) (default: 3840)
+      # PHOTOPRISM_FFMPEG_BITRATE: "32"              # video bitrate limit in Mbit/s (default: 50)
+      ## Run/install on first startup (options: update https gpu ffmpeg tensorflow davfs clitools clean):
+      # PHOTOPRISM_INIT: "https gpu tensorflow"
+      ## Run as a non-root user after initialization (supported: 0, 33, 50-99, 500-600, and 900-1200):
+      # PHOTOPRISM_UID: 1000
+      # PHOTOPRISM_GID: 1000
+      # PHOTOPRISM_UMASK: 0000
+    ## Start as non-root user before initialization (supported: 0, 33, 50-99, 500-600, and 900-1200):
+    # user: "1000:1000"
+    ## Share hardware devices with FFmpeg and TensorFlow (optional):
+    # devices:
+    #  - "/dev/dri:/dev/dri"                         # Intel QSV
+    #  - "/dev/nvidia0:/dev/nvidia0"                 # Nvidia CUDA
+    #  - "/dev/nvidiactl:/dev/nvidiactl"
+    #  - "/dev/nvidia-modeset:/dev/nvidia-modeset"
+    #  - "/dev/nvidia-nvswitchctl:/dev/nvidia-nvswitchctl"
+    #  - "/dev/nvidia-uvm:/dev/nvidia-uvm"
+    #  - "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools"
+    #  - "/dev/video11:/dev/video11"                 # Video4Linux Video Encode Device (h264_v4l2m2m)
+    working_dir: "/photoprism" # do not change or remove
+    ## Storage Folders: "~" is a shortcut for your home directory, "." for the current directory
+    volumes:
+      # "/host/folder:/photoprism/folder"                # Example
+      - "/home/luke/pp/Pictures:/photoprism/originals"               # Original media files (DO NOT REMOVE)
+      # - "/example/family:/photoprism/originals/family" # *Additional* media folders can be mounted like this
+      - "/home/luke/pp/Import:/photoprism/import"                  # *Optional* base folder from which files can be imported to originals
+      - "/home/luke/pp/Import:/photoprism/Import"  
+      - "/home/luke/pp/storage:/photoprism/storage"                  # *Writable* storage folder for cache, database, and sidecar files (DO NOT REMOVE)
+  
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:latest
+    container_name: duckdns
+    environment:
+      PUID: $PUID #optional
+      PGID: $PGID #optional
+      TZ: $TZ #optional
+      SUBDOMAINS: ansell
+      TOKEN: $DUCKDNSTOKEN
+      # UPDATE_IP=ipv4 #optional
+      LOG_FILE: true #optional
+    volumes:
+      - $DOCKERDIR/duckdns:/config
+    restart: unless-stopped
+
+  swag:
+    image: lscr.io/linuxserver/swag
+    container_name: swag
+    cap_add:
+      - NET_ADMIN
+    environment:
+      DOCKER_MODS: linuxserver/mods:swag-auto-reload|linuxserver/mods:swag-dashboard
+      PUID: $PUID
+      PGID: $PGID   
+      TZ: $TZ
+      URL: $DUCKDNS_URL
+      VALIDATION: duckdns
+      SUBDOMAINS: wildcard #optional
+      CERTPROVIDER: zerossl #optional
+      # DNSPLUGIN: duckdns #optional
+      DUCKDNSTOKEN: $DUCKDNSTOKEN
+      # PROPAGATION= #optional
+      EMAIL: $EMAIL
+      # ONLY_SUBDOMAINS: true #optional
+      # EXTRA_DOMAINS= #optional
+      # STAGING: true #optional
+    volumes:
+      - $DOCKERDIR/swag:/config
+    ports:
+      - 443:443
+      - 80:80 #optional
+    restart: unless-stopped
+
+  # authelia:
+  #   image: authelia/authelia
+  #   container_name: authelia
+  #   environment:
+  #       - AUTHELIA_JWT_SECRET=${AUTHELIA_JWT_SECRET}
+  #       - AUTHELIA_SESSION_SECRET=${AUTHELIA_SESSION_SECRET}
+  #       # - AUTHELIA_MYSQL_PASSWORD=${AUTHELIA_MYSQL_PASSWORD}
+  #       - AUTHELIA_STORAGE_ENCRYPTION_KEY=${AUTHELIA_STORAGE_ENCRYPTION_KEY}
+  #   volumes:
+  #     # - $DOCKERDIR/authelia/configuration.yml:/etc/authelia/configuration.yml
+  #     # - $DOCKERDIR/authelia/users_database.yml:/etc/authelia/users_database.yml
+  #     - $DOCKERDIR/authelia/config:/config
+  #     - $DOCKERDIR/authelia/config/users_database.yml:/etc/authelia/users_database.yml
+  #   ports:
+  #     - "9091:9091" # Authelia listens on port 9091 by default
+  #   restart: unless-stopped
+
+  # create an EMQX service
+  emqx:
+    container_name: emqx
+    image: emqx/emqx:latest
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "8883:8883"
+      - "8083:8083"
+      - "18083:18083"
+    environment:
+      EMQX_LOADED_PLUGINS: "emqx_management,emqx_dashboard,emqx_auth_username,emqx_auth_mysql"
+      EMQX_NODE__NAME: ansell_emqx@127.0.0.1
+      EMQX_HOST: emqx
+    volumes:
+      - $DOCKERDIR/emqx/data:/opt/emqx/data
+      - $DOCKERDIR/emqx/log:/opt/emqx/log
+      # - $DOCKERDIR/emqx/etc:/opt/emqx/etc
+      # - $DOCKERDIR/emqx/etc/emqx.conf:/opt/emqx/etc/emqx.conf
+    networks:
+      default:
+        aliases:
+          - emqx
+
+  frigate:
+    container_name: frigate
+    privileged: true # this may not be necessary for all setups
+    restart: unless-stopped
+    image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
+    shm_size: "120mb" # update for your cameras based on calculation above
+    deploy:    # <------------- Add this section
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - $DOCKERDIR/frigate:/config
+      - /home/luke/frigate/storage:/media/frigate
+      - /home/luke/trt-models:/config/model_cache
+      - type: tmpfs # Optional: 1GB of memory, reduces SSD/SD Card wear
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports:
+      - "5000:5000"
+      - "8971:8971"
+      - "8554:8554" # RTSP feeds
+      - "8555:8555/tcp" # WebRTC over tcp
+      - "8555:8555/udp" # WebRTC over udp
+    environment:
+      YOLO_MODELS: yolov4-608,yolov7x-640,yolov7-tiny-288,yolov7-tiny-416,yolov7-320
+      USE_FP16: false
+      FRIGATE_JWT_SECRET: $FRIGATE_JWT_SECRET
+      FRIGATE_RTSP_PASSWORD: $FRIGATE_RTSP_PASSWORD
+      FRIGATE_MQTT_USER: $FRIGATE_MQTT_USER
+      FRIGATE_MQTT_PASS: $FRIGATE_MQTT_PASS
+      FRIGATE_CAM1_USER: $FRIGATE_CAM1_USER
+      FRIGATE_CAM1_PASS: $FRIGATE_CAM1_PASS
+      FRIGATE_CAM2_USER: $FRIGATE_CAM2_USER
+      FRIGATE_CAM2_PASS: $FRIGATE_CAM2_PASS
+      FRIGATE_CAM3_USER: $FRIGATE_CAM3_USER
+      FRIGATE_CAM3_PASS: $FRIGATE_CAM3_PASS
+      FRIGATE_CAM4_USER: $FRIGATE_CAM4_USER
+      FRIGATE_CAM4_PASS: $FRIGATE_CAM4_PASS
+
+
+  ## open webui
+  open-webui:
+    container_name: open-webui
+    image: ghcr.io/open-webui/open-webui:ollama
+    environment:
+      RAG_EMBEDDING_ENGINE: ollama
+    ports:
+      - "3000:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - $DOCKERDIR/ollama:/root/.ollama
+      - $DOCKERDIR/open-webui:/app/backend/data
+      # - $DOCKERDIR/llama-models/models:/root/.ollama/models
+    restart: unless-stopped
+    # depends_on: 
+    #   - ollama
+
+  ollama:
+    container_name: ollama
+    image: ollama/ollama
+    privileged: true
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - $DOCKERDIR/ollama:/root/.ollama
+      # - $DOCKERDIR/llama-models/models/Meta-Llama-3.1-8B:/root/.ollama/models/Meta-Llama-3.1-8B
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+    - '3300:3000' 
+    volumes:
+      - grafana-storage:/var/lib/grafana
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    expose:
+      - 9100
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - $DOCKERDIR/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    expose:
+      - 9090
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    container_name: cadvisor
+    command:
+      - '-port=8098'
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
+    restart: unless-stopped
+
+  nextcloud:
+    image: lscr.io/linuxserver/nextcloud:latest
+    container_name: nextcloud
+    environment:
+      PUID: $PUID
+      PGID: $PGID
+      TZ: $TZ
+    volumes:
+      - $DOCKERDIR/nextcloud:/config
+      - /home/luke/nc-storage/data:/data
+    ports:
+      - 8080:443
+    restart: unless-stopped
+
+volumes:
+  grafana-storage: {}
+  prometheus_data: {}
