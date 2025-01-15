@@ -164,7 +164,7 @@ services:
       - $DOCKERDIR/swag:/config
     ports:
       - 443:443
-      - 80:80 #optional
+      # - 80:80 #optional
     restart: unless-stopped
 
   # authelia:
@@ -363,6 +363,162 @@ services:
       - /home/luke/nc-storage/data:/data
     ports:
       - 8080:443
+    restart: unless-stopped
+
+  mediawiki:
+    image: mediawiki:latest
+    container_name: mediawiki
+    ports:
+      - "8088:80"
+    volumes:
+      # - $DOCKERDIR/mediawiki/images:/var/www/html/images
+      - $DOCKERDIR/mediawiki/html/LocalSettings.php:/var/www/html/LocalSettings.php
+      - $DOCKERDIR/mediawiki/composer.local.json:/var/www/html/composer.local.json
+      # - $DOCKERDIR/mediawiki/html:/var/www/html
+      - $DOCKERDIR/mediawiki/images:/var/www/html/images  # Persistent image uploads
+      # - $DOCKERDIR/mediawiki/vendor:/var/www/html/vendor # Persist Composer dependencies
+      # - $DOCKERDIR/mediawiki/extensions/:/var/www/html/extensions 
+      # - $DOCKERDIR/mediawiki/skins:/var/www/html/skins           # Skins directory
+    environment:
+      - MEDIAWIKI_DB_HOST=mariadb
+      - MEDIAWIKI_DB_NAME=mediawiki
+      - MEDIAWIKI_DB_USER=$MEDIAWIKI_DB_USER
+      - MEDIAWIKI_DB_PASSWORD=$MEDIAWIKI_DB_PASSWORD
+      # - MEDIAWIKI=
+    depends_on:
+      - mariadb
+
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    # network_mode: 'host'
+    environment:
+      - PUID=$PUID
+      - PGID=$PGID
+      - TZ=$TZ
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - $DOCKERDIR/jellyfin/config:/config
+      - $DOCKERDIR/jellyfin/media:/media
+      - $DOCKERDIR/jellyfin/cache:/cache
+    runtime: nvidia
+    privileged: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - 8096:8096
+      - 8920:8920
+    restart: unless-stopped
+
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: transmission
+    environment:
+      - PUID=$PUID
+      - PGID=$PGID
+      - TZ=$TZ
+      # - TRANSMISSION_WEB_HOME= #optional
+      # - USER= #optional
+      # - PASS= #optional
+      # - WHITELIST= #optional
+      # - PEERPORT= #optional
+      # - HOST_WHITELIST= #optional
+    volumes:
+      - $DOCKERDIR/transmission/config:/config
+      - $DOCKERDIR/transmission/downloads:/downloads
+      - $DOCKERDIR/transmission/watch:/watch
+      - $DOCKERDIR/jellyfin/media:/media
+      - $DOCKERDIR/jellyfin/media/series:/series
+      - $DOCKERDIR/jellyfin/media/movies:/movies
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=$PUID
+      - PGID=$PGID
+      - TZ=$TZ
+    volumes:
+      - $DOCKERDIR/radarr/config:/config
+      - $DOCKERDIR/jellyfin/media/movies:/movies #optional
+      - $DOCKERDIR/transmission/downloads:/downloads #optional
+      - $DOCKERDIR/qbittorrent/downloads:/qbittorrent/downloads 
+    ports:
+      - 7878:7878
+    restart: unless-stopped
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=$PUID
+      - PGID=$PGID
+      - TZ=$TZ
+    volumes:
+      - $DOCKERDIR/sonarr/config:/config
+      - $DOCKERDIR/jellyfin/media:/media #optional
+      - $DOCKERDIR/jellyfin/media/series:/series #optional
+      - $DOCKERDIR/transmission/downloads:/downloads #optional
+      - $DOCKERDIR/qbittorrent/downloads:/qbittorrent/downloads 
+    ports:
+      - 8989:8989
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=$TZ
+    volumes:
+      - $DOCKERDIR/prowlarr/config:/config
+    ports:
+      - 9696:9696
+    restart: unless-stopped
+
+  heimdall:
+    image: lscr.io/linuxserver/heimdall:latest
+    container_name: heimdall
+    environment:
+      - PUID=$PUID
+      - PGID=$PGID
+      - TZ=$TZ
+    volumes:
+      - $DOCKERDIR/heimdall/config:/config
+    ports:
+      - 80:80
+      # - 443:443
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=$PUID
+      - PGID=$PGID
+      - TZ=$TZ
+      - WEBUI_PORT=8008
+      - TORRENTING_PORT=6882
+    volumes:
+      - $DOCKERDIR/qbittorrent/config:/config
+      # - $DOCKERDIR/qbittorrent/downloads:/downloads #optional
+      - $DOCKERDIR/qbittorrent/downloads:/qbittorrent/downloads 
+    ports:
+      - 8008:8008
+      - 6882:6882
+      - 6882:6882/udp
     restart: unless-stopped
 
 volumes:
